@@ -56,8 +56,9 @@ func main() {
 
 	openaiClient := openai.NewClient(option.WithBaseURL(cfg.OpenAI.BaseUrl), option.WithAPIKey(cfg.OpenAI.ApiKey))
 	detectionSrv := service.NewChatCompletionService(openaiClient, cfg)
-
+	resourceSrv := service.NewResourceService(cfg)
 	e.POST("/api/image/detect", detectionSrv.DetectImage())
+	e.POST("/api/image/upload", resourceSrv.Upload())
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
