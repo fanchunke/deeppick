@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"time"
 
 	"github.com/fanchunke/deeppick-ai/internal/config"
@@ -61,7 +62,7 @@ func (s *ResourceService) Upload() echo.HandlerFunc {
 
 		// 开始上传
 		uploadCtx, span := s.tracer.Start(ctx, "upload")
-		objectName := uuid.New().String()
+		objectName := fmt.Sprintf("%s%s", uuid.New().String(), path.Ext(file.Filename))
 		_, err = s.cosClient.Object.Put(uploadCtx, objectName, f, nil)
 		if err != nil {
 			return err
@@ -69,8 +70,16 @@ func (s *ResourceService) Upload() echo.HandlerFunc {
 
 		span.End()
 
+		// 获取链接
+		getPreSignedUrlCtx, span := s.tracer.Start(ctx, "upload")
+		presignedURL, err := s.cosClient.Object.GetPresignedURL(getPreSignedUrlCtx, http.MethodGet, objectName, s.cosClient.tmpSecretId, s.cosClient.tmpSecretKey, time.Hour, s.cosClient.token)
+		if err != nil {
+			return err
+		}
+		span.End()
+
 		return c.JSON(http.StatusOK, UploadResponse{
-			Url: s.cosClient.Object.GetObjectURL(objectName).String(),
+			Url: presignedURL.String(),
 		})
 
 	}
