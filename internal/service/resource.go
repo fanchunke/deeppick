@@ -71,8 +71,13 @@ func (s *ResourceService) Upload() echo.HandlerFunc {
 		span.End()
 
 		// 获取链接
-		getPreSignedUrlCtx, span := s.tracer.Start(ctx, "upload")
-		presignedURL, err := s.cosClient.Object.GetPresignedURL(getPreSignedUrlCtx, http.MethodGet, objectName, s.cosClient.tmpSecretId, s.cosClient.tmpSecretKey, time.Hour, s.cosClient.token)
+		getPreSignedUrlCtx, span := s.tracer.Start(ctx, "getPresignedURL")
+		opt := &cos.PresignedURLOptions{
+			Query:  &url.Values{},
+			Header: &http.Header{},
+		}
+		opt.Query.Add("x-cos-security-token", s.cosClient.token)
+		presignedURL, err := s.cosClient.Object.GetPresignedURL(getPreSignedUrlCtx, http.MethodGet, objectName, s.cosClient.tmpSecretId, s.cosClient.tmpSecretKey, time.Hour, opt)
 		if err != nil {
 			return err
 		}
