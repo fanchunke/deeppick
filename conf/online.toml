@@ -1,0 +1,18 @@
+[http]
+port = 8000
+
+[openai]
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key = ""
+model = ""
+
+[otel]
+service_name = "deeppick"
+service_version = "v0.1.0"
+deploy_environment = "production"
+http_endpoint = "tracing-analysis-dc-sh.aliyuncs.com"
+http_url_path = "adapt_h6d9z5mhxp@36e4371eb6c0a0f_h6d9z5mhxp@53df7ad2afe8301/api/otlp/traces"
+
+[cos]
+bucket = ""
+region = ""
