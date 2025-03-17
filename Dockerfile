@@ -26,6 +26,7 @@ RUN go build -o /bin/app .
 FROM alpine:latest
 WORKDIR /home/works/program
 COPY --from=builder /bin/app .
+COPY conf ./conf
 COPY --from=base /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 EXPOSE 8000
 ENTRYPOINT ["./app"]
