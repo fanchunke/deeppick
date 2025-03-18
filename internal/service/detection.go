@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/fanchunke/deeppick-ai/internal/config"
 	"github.com/fanchunke/deeppick-ai/internal/repository"
@@ -34,9 +35,10 @@ type DetectionService struct {
 	tracer trace.Tracer
 	db     *repository.Queries
 	pool   *ants.Pool
+	logger echo.Logger
 }
 
-func NewChatCompletionService(client *openai.Client, cfg *config.Config, db *sql.DB, pool *ants.Pool) *DetectionService {
+func NewChatCompletionService(client *openai.Client, cfg *config.Config, db *sql.DB, pool *ants.Pool, logger echo.Logger) *DetectionService {
 	return &DetectionService{client: client, cfg: cfg, tracer: otel.Tracer("DetectionService"), db: repository.New(db), pool: pool}
 }
 
@@ -113,6 +115,9 @@ func (s *DetectionService) DetectImage() echo.HandlerFunc {
 		if err := s.pool.Submit(func() {
 			if _, err := s.detectImage(newCtx, &req, taskId); err != nil {
 				log.Printf("exec detection task %s failed: %#v", taskId, err)
+				s.logger.Errorf("exec detection task %s failed: %#v", taskId, err)
+			} else {
+				s.logger.Errorf("exec detection task %s success.", taskId)
 			}
 		}); err != nil {
 			return err
@@ -153,6 +158,7 @@ func (s *DetectionService) detectImage(ctx context.Context, req *DetectImageRequ
 			},
 		)),
 	})
+	span.End()
 	if err != nil {
 		if _, err := s.db.UpdateTaskStatus(ctx, repository.UpdateTaskStatusParams{
 			TaskID: taskId,
@@ -162,7 +168,6 @@ func (s *DetectionService) detectImage(ctx context.Context, req *DetectImageRequ
 		}
 		return nil, err
 	}
-	span.End()
 
 	if len(chatCompletion.Choices) == 0 {
 		if _, err := s.db.UpdateTaskStatus(ctx, repository.UpdateTaskStatusParams{
@@ -174,10 +179,10 @@ func (s *DetectionService) detectImage(ctx context.Context, req *DetectImageRequ
 		return nil, errors.New("大模型无返回结果")
 	}
 
-	if _, err := s.db.UpdateTaskResult(ctx, repository.UpdateTaskResultParams{
+	if err := s.db.UpdateTaskResult(ctx, repository.UpdateTaskResultParams{
 		TaskID: taskId,
 		Status: string(Success),
-		Result: json.RawMessage([]byte(chatCompletion.Choices[0].Message.Content)),
+		Result: sql.NullString{String: chatCompletion.Choices[0].Message.Content, Valid: true},
 	}); err != nil {
 		return nil, err
 	}
@@ -193,6 +198,15 @@ type GetTaskRequest struct {
 	TaskId string `query:"task_id"`
 }
 
+type GetTaskResponse struct {
+	ID        int32     `json:"id"`
+	TaskID    string    `json:"task_id"`
+	Status    string    `json:"status"`
+	Result    string    `json:"result"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 func (s *DetectionService) GetTask() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var req GetTaskRequest
@@ -205,6 +219,15 @@ func (s *DetectionService) GetTask() echo.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		return c.JSON(http.StatusOK, result)
+
+		response := GetTaskResponse{
+			ID:        result.ID,
+			TaskID:    result.TaskID,
+			Status:    result.Status,
+			Result:    result.Result.String,
+			CreatedAt: result.CreatedAt.Time,
+			UpdatedAt: result.UpdatedAt.Time,
+		}
+		return c.JSON(http.StatusOK, response)
 	}
 }

@@ -14,6 +14,6 @@ WHERE task_id = ?;
 UPDATE tasks 
 SET status = ? WHERE task_id = ?;
 
--- name: UpdateTaskResult :execresult
+-- name: UpdateTaskResult :exec
 UPDATE tasks 
-SET status = ? AND result = ? WHERE task_id = ?;
+SET status = ?, result = ? WHERE task_id = ?;

@@ -7,8 +7,7 @@ package repository
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
+	sql "database/sql"
 )
 
 const createTask = `-- name: CreateTask :execresult
@@ -20,8 +19,8 @@ INSERT INTO tasks (
 `
 
 type CreateTaskParams struct {
-	TaskID string `json:"task_id"`
-	Status string `json:"status"`
+	TaskID string
+	Status string
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (sql.Result, error) {
@@ -48,19 +47,20 @@ func (q *Queries) GetTask(ctx context.Context, taskID string) (Task, error) {
 	return i, err
 }
 
-const updateTaskResult = `-- name: UpdateTaskResult :execresult
+const updateTaskResult = `-- name: UpdateTaskResult :exec
 UPDATE tasks 
-SET status = ? AND result = ? WHERE task_id = ?
+SET status = ?, result = ? WHERE task_id = ?
 `
 
 type UpdateTaskResultParams struct {
-	Status string          `json:"status"`
-	Result json.RawMessage `json:"result"`
-	TaskID string          `json:"task_id"`
+	Status string
+	Result sql.NullString
+	TaskID string
 }
 
-func (q *Queries) UpdateTaskResult(ctx context.Context, arg UpdateTaskResultParams) (sql.Result, error) {
-	return q.db.ExecContext(ctx, updateTaskResult, arg.Status, arg.Result, arg.TaskID)
+func (q *Queries) UpdateTaskResult(ctx context.Context, arg UpdateTaskResultParams) error {
+	_, err := q.db.ExecContext(ctx, updateTaskResult, arg.Status, arg.Result, arg.TaskID)
+	return err
 }
 
 const updateTaskStatus = `-- name: UpdateTaskStatus :execresult
@@ -69,8 +69,8 @@ SET status = ? WHERE task_id = ?
 `
 
 type UpdateTaskStatusParams struct {
-	Status string `json:"status"`
-	TaskID string `json:"task_id"`
+	Status string
+	TaskID string
 }
 
 func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) (sql.Result, error) {

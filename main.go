@@ -73,7 +73,7 @@ func main() {
 	e.Use(otelecho.Middleware(cfg.Otel.ServiceName))
 
 	openaiClient := openai.NewClient(option.WithBaseURL(cfg.OpenAI.BaseUrl), option.WithAPIKey(cfg.OpenAI.ApiKey))
-	detectionSrv := service.NewChatCompletionService(openaiClient, cfg, db, pool)
+	detectionSrv := service.NewChatCompletionService(openaiClient, cfg, db, pool, e.Logger)
 	resourceSrv := service.NewResourceService(cfg)
 	e.POST("/api/image/detect", detectionSrv.DetectImage())
 	e.POST("/api/image/upload", resourceSrv.Upload())

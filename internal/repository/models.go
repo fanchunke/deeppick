@@ -5,15 +5,14 @@
 package repository
 
 import (
-	"database/sql"
-	"encoding/json"
+	sql "database/sql"
 )
 
 type Task struct {
-	ID        int32           `json:"id"`
-	TaskID    string          `json:"task_id"`
-	Status    string          `json:"status"`
-	Result    json.RawMessage `json:"result"`
-	CreatedAt sql.NullTime    `json:"created_at"`
-	UpdatedAt sql.NullTime    `json:"updated_at"`
+	ID        int32
+	TaskID    string
+	Status    string
+	Result    sql.NullString
+	CreatedAt sql.NullTime
+	UpdatedAt sql.NullTime
 }
