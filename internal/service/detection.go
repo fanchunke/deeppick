@@ -37,7 +37,7 @@ type DetectionService struct {
 }
 
 func NewChatCompletionService(client *openai.Client, cfg *config.Config, db *sql.DB, pool *ants.Pool) *DetectionService {
-	return &DetectionService{client: client, cfg: cfg, tracer: otel.Tracer("DetectionService"), db: repository.New(db)}
+	return &DetectionService{client: client, cfg: cfg, tracer: otel.Tracer("DetectionService"), db: repository.New(db), pool: pool}
 }
 
 type DetectionType string
