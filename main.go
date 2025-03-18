@@ -14,6 +14,7 @@ import (
 	"github.com/fanchunke/deeppick-ai/internal/config"
 	"github.com/fanchunke/deeppick-ai/internal/otel"
 	"github.com/fanchunke/deeppick-ai/internal/service"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/openai/openai-go"
