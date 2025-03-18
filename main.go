@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/panjf2000/ants/v2"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
@@ -39,6 +41,7 @@ func main() {
 	}
 
 	ctx := context.Background()
+	// init opentelemetry
 	shutdown := otel.InitOpenTelemetry(
 		ctx,
 		otel.WithServiceName(cfg.Otel.ServiceName),
@@ -49,16 +52,31 @@ func main() {
 	)
 	defer shutdown()
 
+	// 初始化数据库
+	db, err := sql.Open(cfg.Database.Driver, cfg.Database.DataSource)
+	if err != nil {
+		log.Fatalf("open database error: %v", err)
+	}
+	defer db.Close()
+
+	// 初始化协程池
+	pool, err := ants.NewPool(10, ants.WithPreAlloc(true))
+	if err != nil {
+		log.Fatalf("init ants pool error: %v", err)
+	}
+	defer pool.Release()
+
 	e := echo.New()
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
 	e.Use(otelecho.Middleware(cfg.Otel.ServiceName))
 
 	openaiClient := openai.NewClient(option.WithBaseURL(cfg.OpenAI.BaseUrl), option.WithAPIKey(cfg.OpenAI.ApiKey))
-	detectionSrv := service.NewChatCompletionService(openaiClient, cfg)
+	detectionSrv := service.NewChatCompletionService(openaiClient, cfg, db, pool)
 	resourceSrv := service.NewResourceService(cfg)
 	e.POST("/api/image/detect", detectionSrv.DetectImage())
 	e.POST("/api/image/upload", resourceSrv.Upload())
+	e.GET("/api/task/result", detectionSrv.GetTask())
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()

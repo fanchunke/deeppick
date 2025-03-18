@@ -8,10 +8,11 @@ import (
 )
 
 type Config struct {
-	HTTP   HTTP   `mapstructure:"http" structs:"http"`
-	OpenAI OpenAI `mapstructure:"openai" structs:"openai"`
-	Otel   Otel   `mapstructure:"otel" structs:"otel"`
-	Cos    Cos    `mapstructure:"cos" structs:"cos"`
+	HTTP     HTTP     `mapstructure:"http" structs:"http"`
+	OpenAI   OpenAI   `mapstructure:"openai" structs:"openai"`
+	Otel     Otel     `mapstructure:"otel" structs:"otel"`
+	Cos      Cos      `mapstructure:"cos" structs:"cos"`
+	Database Database `mapstructure:"database" structs:"database"`
 }
 
 type HTTP struct {
@@ -37,6 +38,11 @@ type Cos struct {
 	SecretKey string `mapstructure:"secret_key" structs:"secret_key" env:"COS_SECRET_KEY"`
 	Bucket    string `mapstructure:"bucket" structs:"bucket" env:"COS_BUCKET"`
 	Region    string `mapstructure:"region" structs:"region" env:"COS_REGION"`
+}
+
+type Database struct {
+	Driver     string `mapstructure:"driver" structs:"driver" env:"DATABASE_DRIVER"`
+	DataSource string `mapstructure:"data_source" structs:"data_source" env:"DATABASE_DATA_SOURCE"`
 }
 
 func NewConfig(path string) (*Config, error) {

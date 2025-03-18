@@ -8,6 +8,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/labstack/echo/v4 v4.13.3
 	github.com/openai/openai-go v0.1.0-alpha.62
+	github.com/panjf2000/ants/v2 v2.11.2
 	github.com/spf13/viper v1.20.0
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.62
 	go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho v0.60.0
@@ -56,6 +57,7 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.10.0 // indirect

@@ -1,26 +1,43 @@
 package service
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/fanchunke/deeppick-ai/internal/config"
+	"github.com/fanchunke/deeppick-ai/internal/repository"
+	"github.com/google/uuid"
 	"github.com/invopop/jsonschema"
 	"github.com/labstack/echo/v4"
 	"github.com/openai/openai-go"
+	"github.com/panjf2000/ants/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+)
+
+type TaskStatus string
+
+const (
+	Pending TaskStatus = "pending"
+	Running TaskStatus = "running"
+	Success TaskStatus = "success"
+	Failed  TaskStatus = "failed"
 )
 
 type DetectionService struct {
 	client *openai.Client
 	cfg    *config.Config
 	tracer trace.Tracer
+	db     *repository.Queries
+	pool   *ants.Pool
 }
 
-func NewChatCompletionService(client *openai.Client, cfg *config.Config) *DetectionService {
-	return &DetectionService{client: client, cfg: cfg, tracer: otel.Tracer("DetectionService")}
+func NewChatCompletionService(client *openai.Client, cfg *config.Config, db *sql.DB, pool *ants.Pool) *DetectionService {
+	return &DetectionService{client: client, cfg: cfg, tracer: otel.Tracer("DetectionService"), db: repository.New(db)}
 }
 
 type DetectionType string
@@ -75,6 +92,10 @@ func GenerateSchema[T any]() interface{} {
 
 var DetectImageResponseSchema = GenerateSchema[DetectImageResponse]()
 
+type DetectionTaskResponse struct {
+	TaskId string `json:"task_id"`
+}
+
 func (s *DetectionService) DetectImage() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
@@ -82,41 +103,108 @@ func (s *DetectionService) DetectImage() echo.HandlerFunc {
 		if err := c.Bind(&req); err != nil {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 		}
-		schema := openai.ResponseFormatJSONSchemaJSONSchemaParam{
-			Name:        openai.F("ImageDetectResult"),
-			Description: openai.F("image detect result"),
-			Schema:      openai.F(DetectImageResponseSchema),
-			Strict:      openai.Bool(true),
+
+		taskId := uuid.New().String()
+		if _, err := s.db.CreateTask(ctx, repository.CreateTaskParams{TaskID: taskId, Status: string(Pending)}); err != nil {
+			return err
 		}
-		ctx, span := s.tracer.Start(ctx, "chatCompletion")
-		chatCompletion, err := s.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-			Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-				openai.SystemMessage(FruitAndVegetableDetectionPrompt),
-				openai.UserMessage("帮我识别，返回json"),
-				openai.UserMessageParts(openai.ImagePart(req.ImageUrl)),
-			}),
-			Model: openai.F(openai.ChatModel(s.cfg.OpenAI.Model)),
-			ResponseFormat: openai.F(openai.ChatCompletionNewParamsResponseFormatUnion(
-				openai.ResponseFormatJSONSchemaParam{
-					Type:       openai.F(openai.ResponseFormatJSONSchemaTypeJSONSchema),
-					JSONSchema: openai.F(schema),
-				},
-			)),
-		})
+
+		newCtx := trace.ContextWithSpan(context.Background(), trace.SpanFromContext(ctx))
+		if err := s.pool.Submit(func() {
+			if _, err := s.detectImage(newCtx, &req, taskId); err != nil {
+				log.Printf("exec detection task %s failed: %#v", taskId, err)
+			}
+		}); err != nil {
+			return err
+		}
+
+		return c.JSON(http.StatusOK, DetectionTaskResponse{TaskId: taskId})
+	}
+}
+
+func (s *DetectionService) detectImage(ctx context.Context, req *DetectImageRequest, taskId string) (*DetectImageResponse, error) {
+	// 更新任务状态
+	if _, err := s.db.UpdateTaskStatus(ctx, repository.UpdateTaskStatusParams{
+		TaskID: taskId,
+		Status: string(Running),
+	}); err != nil {
+		return nil, err
+	}
+
+	// 开始检测
+	schema := openai.ResponseFormatJSONSchemaJSONSchemaParam{
+		Name:        openai.F("ImageDetectResult"),
+		Description: openai.F("image detect result"),
+		Schema:      openai.F(DetectImageResponseSchema),
+		Strict:      openai.Bool(true),
+	}
+	ctx, span := s.tracer.Start(ctx, "chatCompletion")
+	chatCompletion, err := s.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(FruitAndVegetableDetectionPrompt),
+			openai.UserMessage("帮我识别，返回json"),
+			openai.UserMessageParts(openai.ImagePart(req.ImageUrl)),
+		}),
+		Model: openai.F(openai.ChatModel(s.cfg.OpenAI.Model)),
+		ResponseFormat: openai.F(openai.ChatCompletionNewParamsResponseFormatUnion(
+			openai.ResponseFormatJSONSchemaParam{
+				Type:       openai.F(openai.ResponseFormatJSONSchemaTypeJSONSchema),
+				JSONSchema: openai.F(schema),
+			},
+		)),
+	})
+	if err != nil {
+		if _, err := s.db.UpdateTaskStatus(ctx, repository.UpdateTaskStatusParams{
+			TaskID: taskId,
+			Status: string(Failed),
+		}); err != nil {
+			return nil, err
+		}
+		return nil, err
+	}
+	span.End()
+
+	if len(chatCompletion.Choices) == 0 {
+		if _, err := s.db.UpdateTaskStatus(ctx, repository.UpdateTaskStatusParams{
+			TaskID: taskId,
+			Status: string(Failed),
+		}); err != nil {
+			return nil, err
+		}
+		return nil, errors.New("大模型无返回结果")
+	}
+
+	if _, err := s.db.UpdateTaskResult(ctx, repository.UpdateTaskResultParams{
+		TaskID: taskId,
+		Status: string(Success),
+		Result: json.RawMessage([]byte(chatCompletion.Choices[0].Message.Content)),
+	}); err != nil {
+		return nil, err
+	}
+
+	var response DetectImageResponse
+	if err := json.Unmarshal([]byte(chatCompletion.Choices[0].Message.Content), &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+type GetTaskRequest struct {
+	TaskId string `param:"task_id"`
+}
+
+func (s *DetectionService) GetTask() echo.HandlerFunc {
+	return func(c echo.Context) error {
+		var req GetTaskRequest
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+		}
+
+		ctx := c.Request().Context()
+		result, err := s.db.GetTask(ctx, req.TaskId)
 		if err != nil {
 			return err
 		}
-		span.End()
-
-		if len(chatCompletion.Choices) == 0 {
-			return errors.New("大模型无返回结果")
-		}
-
-		var response DetectImageResponse
-		if err := json.Unmarshal([]byte(chatCompletion.Choices[0].Message.Content), &response); err != nil {
-			return err
-		}
-		c.JSON(http.StatusOK, response)
-		return nil
+		return c.JSON(http.StatusOK, result)
 	}
 }

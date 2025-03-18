@@ -16,3 +16,7 @@ http_url_path = "adapt_h6d9z5mhxp@36e4371eb6c0a0f_h6d9z5mhxp@53df7ad2afe8301/api
 [cos]
 bucket = ""
 region = ""
+
+[database]
+driver = "mysql"
+data_source = ""
