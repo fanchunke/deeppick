@@ -190,7 +190,7 @@ func (s *DetectionService) detectImage(ctx context.Context, req *DetectImageRequ
 }
 
 type GetTaskRequest struct {
-	TaskId string `param:"task_id"`
+	TaskId string `query:"task_id"`
 }
 
 func (s *DetectionService) GetTask() echo.HandlerFunc {
